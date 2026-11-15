@@ -1,0 +1,18 @@
+[package]
+name = "esm-core"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic no_std verification core of the Epistemic State Machine (BLC/KAM, Counted MST, bounded Bohm-tree T6)"
+publish = false
+
+# No dependencies. By design: the guest (zkVM, rv32im) and the host must run bit-identical code.
+[dependencies]
+
+[profile.dev]
+overflow-checks = true
+
+[profile.release]
+overflow-checks = true
+opt-level = 3
+lto = true
+codegen-units = 1
