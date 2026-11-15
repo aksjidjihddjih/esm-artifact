@@ -1,0 +1,12 @@
+[package]
+name = "zkvm-sim"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Minimal RV32IM emulator with an instruction counter + host-side driver for the esm-guest ELF (Step 2 proxy for a zkVM)"
+
+[dependencies]
+esm-core = { path = "../esm-core" }
+
+[profile.release]
+opt-level = 3

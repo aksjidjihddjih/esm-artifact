@@ -1,0 +1,126 @@
+# =============================================================================
+# ESM real-net implementation -- FROZEN PARAMETERS (spec/params.toml)
+# Step 0-B of the roadmap. Single source of truth for esm-core, contracts, SDK.
+#
+# Conventions
+#   * [USER]    value fixed by the instruction that created this file
+#   * [DERIVED] value computed from [USER] values (see formula in comment)
+#   * [POLICY]  decision taken from the red-team audit (C1..C6, M1..M10)
+#   * TOML integers are signed 64-bit, so values >= 2^63 are written as strings.
+#   * spec/check_params.py verifies every [DERIVED] relation and every overflow
+#     bound below; esm-core/tests/params_sync.rs verifies the Rust constants.
+# =============================================================================
+
+[meta]
+spec_version = "1.0.0-draft"
+lean_file    = "ESM_verified.lean"      # 1-1111 unchanged, + shannon_len_ceilDiv_iff appended
+frozen       = true
+
+# -----------------------------------------------------------------------------
+# Time / batch units (audit C1, C5)
+# Unit = Ethereum L1 block (~12 s). block.number on Arbitrum is an L1-block
+# estimate, so every chain MUST be driven by L1 block numbers (or seconds),
+# never by the L2 block counter.
+# [USER] The TOTAL is scaled 5x (60 -> 300); the phases are redistributed:
+#        n_com 20 -> 100 (5x), n_delay 10 -> 20 (2x), n_rev 30 -> 180 (6x).
+# -----------------------------------------------------------------------------
+[time]
+unit              = "l1_block"
+l1_block_seconds  = 12
+n_com             = 100          # [USER] paper: 20  (5x)
+n_delay           = 20           # [USER] paper: 10  (2x)
+n_rev             = 180          # [USER] paper: 30  (6x) -> 180 * 12 s = 36 min proving window (C5)
+n_batch           = 300          # [DERIVED] n_com + n_delay + n_rev  (= 5 * 60)
+batches_per_epoch = 166          # unchanged from the paper
+n_epoch           = 49800        # [DERIVED] 166 * n_batch
+n_lock            = 50000        # [USER] paper: 10000 (5x)
+# The two values below were NOT specified in the instruction. REVIEW before freezing.
+n_rev_t6          = 180          # [DERIVED, review] T6 reveals carry a zk proof too -> same 36 min window as n_rev (paper: 30)
+n_hold            = 300          # [DERIVED, review] paper's hold bucket equals one batch (60) -> n_batch
+
+# -----------------------------------------------------------------------------
+# Input / bit-width bounds (audit chapter 3, M3, M4, M5)
+# -----------------------------------------------------------------------------
+[bounds]
+mint_cap          = "79228162514264337593543950335"   # [USER] 2^96 - 1  (string: > i64)
+mint_cap_bits     = 96
+max_n_k           = 1073741824   # [USER] 2^30
+max_b_k           = 1024         # [USER] 2^10
+max_phi0_bits     = 1099511627776 # [DERIVED] max_n_k * max_b_k = 2^40
+bits_quantity_bits = 40          # every "bit" quantity (Phi, L, d, Delta, l, x, a, Saved, ...) < 2^40
+t_max             = 1048576      # [USER] 2^20
+delta_cap_v1      = 65536        # [USER] 2^16  (launch profile cap on declared delta / fuel_max)
+max_cited_axioms  = 16           # [USER] |C_i| <= 16   (M3)
+max_rbf_sponsors  = 10           # [USER] K_rbf^max
+max_prog_bits     = 65536        # [USER] |p| <= 2^16 bits (M5)
+max_debruijn_index = 255         # [USER, Step 2 finding] idx > 255 is a syntax error at parse time (de Bruijn lookups cost `idx` hops for 1 step)
+kam_heap_per_step = 16           # [USER] closure/env arena cells per declared step (M5)
+c_hdr_bits        = 33           # fixed MST header (paper Sec. 3.1)
+max_tranches      = 1024         # [POLICY, Step 3] contract-level bound on the tranche list (Lean: unbounded List; a bound is a sound restriction)
+max_debt_bits     = 97           # [DERIVED] D <= M_cap_bps * MINT_CAP < 2^97
+
+# -----------------------------------------------------------------------------
+# Accounting asset (audit C6): ONE ERC-20 per protocol instance.
+# -----------------------------------------------------------------------------
+[asset]
+mode      = "single_erc20"       # [USER]
+symbol    = "WETH"               # [USER] no blacklist / pause / fee-on-transfer / rebase
+decimals  = 18                   # [USER]
+address   = ""                   # chain specific; filled in by the deployment script
+balance_diff_check = true        # [POLICY] deposits verified by balance difference
+burn_sink = "dead_address"       # [POLICY] 'burned' is an accounting counter + irrecoverable transfer
+
+# -----------------------------------------------------------------------------
+# Protocol constants (basis points)
+# -----------------------------------------------------------------------------
+[protocol]
+epsilon_bps      = 500           # [USER] settlement burn
+gamma_bps        = 2000          # [USER] ancestor royalty
+beta_d_bps       = 1000          # [USER] data anchor rebate
+kappa_bps        = 7000          # [USER] hunter / finder share
+sigma_col_bps    = 10000         # [USER] collateral
+sigma_dict_bps   = 10000         # [USER] dictionary stake cap
+m_cap_bps        = 20000         # [USER] RBF 2.0x debt multiplier
+bps_denominator  = 10000
+k_spot           = 32            # paper
+s_audit_tokens_paper = 20        # paper value (dimensionless); MUST be re-derived in WETH wei (audit M8)
+
+# -----------------------------------------------------------------------------
+# Execution / verification pipeline (audit C3, C4, M7)
+# -----------------------------------------------------------------------------
+[execution]
+verifier            = "zkvm"     # [POLICY] single pipeline (SP1 first, RISC Zero as alternate)
+stylus              = false      # [POLICY] activations paused on Arbitrum One/Nova since 2026-10-02
+jets                = false      # [POLICY] canonical un-jetted U_BLC only in v1 (C4)
+canonical_steps     = true       # [POLICY] step counter == paper's KAM accounting, bit exact
+hash                = "keccak256"# [POLICY] guest, MST and contracts share one hash (M4)
+upgrade_policy      = "immutable_versioned_verifier_registry_with_expiring_guardian"
+
+# -----------------------------------------------------------------------------
+# Randomness and data availability (audit C1, C2)
+# -----------------------------------------------------------------------------
+[randomness]
+source        = "drand_verified_in_guest"   # [POLICY] block.prevrandao is constant 1 on Arbitrum
+fallback      = "l1_randao_relay"           # [POLICY] permissionless L1 -> L2 relay
+n_delay_l1_blocks = 20                      # = time.n_delay
+
+[da]
+dataset_storage = "arweave_plus_ipfs"       # [POLICY] blobs are pruned after ~18 days
+commitment      = "keccak256_merkle_root"   # [POLICY] per-leaf membership proofs
+blob_for_dataset = false                    # [POLICY] L2 users cannot send blob transactions
+
+# -----------------------------------------------------------------------------
+# Worst-case intermediate products (documented bound, checked by check_params.py)
+# every entry: expected maximum bit length of the product of its factors
+# -----------------------------------------------------------------------------
+[overflow_bits]
+escrow_alloc      = 136          # B * Delta                = 96 + 40
+delta_amort       = 150          # 10000 * C * Phi          = 14 + 96 + 40
+stage1_alloc      = 80           # Saved * min(Sigma, d)    = 40 + 40
+slot_royalty      = 150          # gamma * E_net * x        = 14 + 96 + 40
+paid_s            = 193          # R_repay * D_{m,s}        = 96 + 97
+div_s             = 206          # phi * S * R_rem          = 14 + 96 + 96
+safe_rem_escrow   = 136          # E_tr * d_rem             = 96 + 40
+hold_absorb       = 136          # e_hold * d_abs           = 96 + 40
+puncture_scale    = 80           # x * Delta_rem            = 40 + 40
+shannon_total_bits = 142         # N(<=2^32) * W(<2^110)    : computed with ceilDiv form, never 2^k * w
