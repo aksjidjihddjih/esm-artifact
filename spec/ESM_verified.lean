@@ -1109,26 +1109,3 @@ theorem game_honest_citation_dominates_unamortized_clone
   omega
 
 end ESM
-
-/-! ================================================================
-    Step 0-A 追加補題（既存 1–1111 行は不変。末尾への追記のみ）
-    Shannon 辞書長 ℓ_E のオーバーフロー回避同値：
-      T ≤ 2^k * w  ↔  ceilDiv T w ≤ 2^k      （w > 0）
-    Solidity (uint256) では右辺（ceilDiv と 2^k の比較）で ℓ_E を計算する。
-    ================================================================ -/
-namespace ESM
-
-/-- 【Lemma: Shannon 辞書長のオーバーフロー回避同値】
-    w > 0 のとき、`T ≤ 2^k * w` と `ceilDiv T w ≤ 2^k` は同値。 -/
-theorem shannon_len_ceilDiv_iff (k w T : Nat) (hw : 0 < w) :
-    T ≤ 2 ^ k * w ↔ ceilDiv T w ≤ 2 ^ k := by
-  unfold ceilDiv
-  have h1 : (T + w - 1) / w ≤ 2 ^ k ↔ (T + w - 1) / w < 2 ^ k + 1 :=
-    Nat.lt_succ_iff.symm
-  rw [h1, Nat.div_lt_iff_lt_mul hw]
-  have h2 : (2 ^ k + 1) * w = 2 ^ k * w + w := by
-    rw [Nat.add_mul, Nat.one_mul]
-  rw [h2]
-  omega
-
-end ESM

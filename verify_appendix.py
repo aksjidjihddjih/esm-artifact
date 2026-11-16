@@ -71,7 +71,7 @@ def main(argv):
     args = [a for a in argv[1:] if not a.startswith("-")]
     opt = lambda f: argv[argv.index(f) + 1] if f in argv and argv.index(f) + 1 < len(argv) else None
     lean_path = next((a for a in args if a.endswith(".lean")), "ESM_verified.lean")
-    tex_path = opt("--tex") or next(iter(sorted(glob.glob("Esm_V15_2_Paper*.tex"))[-1:]), None)
+    tex_path = opt("--tex") or ("paper.tex" if os.path.exists("paper.tex") else next(iter(sorted(glob.glob("Esm_V15_2_Paper*.tex"))[-1:]), None))
     src = open(lean_path, encoding="utf-8").read(); lines = src.split("\n")
     if lines and lines[-1] == "": lines = lines[:-1]
     def check(label, ok, detail=""):
